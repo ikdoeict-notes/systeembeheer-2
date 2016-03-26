@@ -4,7 +4,7 @@ AKA Labo Windows Server en Labo Linux Server
 
 # inhoud
 
-oplossingen labo linux
+oplossingen labo linux 2015-2016. Lessen door Tim Vermeulen.
 
 # todo
 
