@@ -26,8 +26,8 @@ OPZETTEN VIRTUELE OPGEVING
 		Server:
 			Add Roles and Features Wizzard > Server Roles > Web Server (IIS) > Ma	nagement Tools > Management Service
 			DNS
-		Cliënt:
-			ISS manager downloaden
+		(Cliënt:
+			ISS manager downloaden)
 
 3. Webserver
 	* Instaleer de nodige rollen
@@ -93,8 +93,8 @@ Computer herstarten: Restart-computer
 		Stel de rechten van de dir in met $s
 			$s | Set-Acl -Path “C:\server”
 5. Aankoppelen Share
-	* Maak een user www-data Azerty123 op S2
-	* Koppel de S1 share op S2 met schijf x
+	* Maak een user www-data Azerty123 op S2 
+	* Koppel de S2 share op S1 met schijf x
 		New-PSDrive –Name “x” –PSProvider FileSystem –Root “\\S2\servershare” –Persist (op s1)
 	* Maak een lijst van alle lopende processen op s2 en drop die in een lijst in html
 		Get-Process | ConvertTo-Html | Out-File “C:\server\index.html”
@@ -115,7 +115,7 @@ ALLEENSTAANDE DOMEINCONTROLLER
 CHECK:
 Dns aangemaakt?
 snoeck.eu werk?
-src records? -> in dns manager>forward lookup zones> snoeck.eu>_tcp
+srv records? -> in dns manager>forward lookup zones> snoeck.eu>_tcp
 is dir sysvol aangemaakt met dir policies en scripts
 test opstelling met dcdiag.exe
 als het heropstarten lang duurt dan is er waarschijnlijk een fout bij de dns server
@@ -161,7 +161,68 @@ Nets firewall set impcsettiang all enable
 		in cmd
 			dnscmd /zoneexport snoeck.eu snoeck.eu.dns
 			plaats: system32/dns
-	* dns forwarders
-		
+	*dns forwarders
+		s1>rechts kikken properties>forwarders
+	*dns caching
+		. view>advanced
+		. Cached Lookups> …
+		Door TTL aka time to live aan te passen kan je kiezen hoelang de server deze onthoud 
+	* primaire en secondaire zones
+		maak van s2 een dns server
+			Install-WindowsFeature DNS –IncludeManagementTools
+		Geeft de zone mystartup.be door aan de s2core dns server
+			forward>mystartup.be>properties
+		configureer nieuwe secundaire zone op s2core
+			Add-DnsServerSecondaryZone -Name “mystartup.be” -ZoneFile “mystartup.be.dns” -MasterServers 192.168.1.1
+		controleer met
+			Get-DnsServerResourceRecord mynstartup.be
+		properties>soa
+			om te kijken opwelde specifieke tijdsintervallen de servers syncen met elkaar
+		forwarders toevoegen
+			Add-DnsServerForwarder -IPAddress 10.132.1.1
+		Voeg de dns s2core toe aan client ipv4 (secundair) zo kan men het domain raadplegen als 1 van de 2 servers plat ligt
+
+!!Zorg dat s2 onder dns in ijs staat en dat er een reverse naar de server is. 
+
+	* MX (mail) record
+		maak mx record
+		maak name voor pop, smtp en imap
+	* delegatie
+		onder dns nieuwe server connecten
+		nieuwe primary zone
+		nieuwe a record naar een ip (10.129.28.180)
+
+		nslookup
+		>set no recurse
+		>set q=ns
+		(>test.ict.mystartup.be)
+
+
+WEBSERVER CONFIGURATIE
+——————————————
+* Meerdere websites op 1 server
+	maak nieuwe site met www en zonder
+	maak 2e site via powershell
+		Powershellcommand(s):
+
+import-module webadministration
+IIS:
+PS IIS:\Sites> New-Item iis:\Sites\ict.mijnstartup.be
+binding[0]: @{protocol="http";bindingInformation="*:80:ict.mijnstartup.be"}
+binding[1]: @{protocol="http";bindingInformation="*:80:www.ict.mijnstartup.be"} -
+PhysicalPath C:\websites\ict.mijnstartup.be
+
+of
+
+New-WebSite -Name ict.mijnbedrijf.be -Port 80 -PhysicalPath "C:\websites\ict.mijnbedrijf.be\"
+New-WebBinding -Name "ict.mijnbedrijf.be" -IPAddress "*" -Port 80 -HostHeader “www.ict.mijnbedrijf.be”
+New-WebBinding -Name "ict.mijnbedrijf.be" -IPAddress "*" -Port 80 -HostHeader “ict.mijnbedrijf.be”
+
+veilig surfen
+
+In IIS Manager op S1 klikken  server certificates  rechts: create self-signed certificate  naam: ict.mijnbedrijf.be certificate, store: personal
+Daarna: rechtermuis op ict.mijnbedrijf.be  edit bindings  add  type: https, host name: ict.mijnbedrijf.be, SSL cert: ict.mijnbedrijf.be certificate
+
+Ja skip ze maat, zoek et zelf uit..
 
 
