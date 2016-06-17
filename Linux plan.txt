@@ -12,7 +12,7 @@ BASIS CONFIGURATIE
 Netwerkconfiguratie
 ___________________
 Weergave van alle interfaces:
-	- mmcli device
+	- nmcli device
 Check macabres! Komt overeen met die in vm?
 
 Op Centos7 en Debian8 —>
