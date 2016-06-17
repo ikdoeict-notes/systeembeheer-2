@@ -1,0 +1,242 @@
+***********************
+* SYSTEEMBEHEER LINUX *
+***********************
+Syntax om services te beheren: systemctl <commando> <naam service>
+Hulp nodig bij een commando?: man <commando> help <commando>
+
+!!! ifconfig op dabian8 is ip a !!!
+
+------------------
+BASIS CONFIGURATIE
+------------------
+Netwerkconfiguratie
+___________________
+Weergave van alle interfaces:
+	- mmcli device
+Check macabres! Komt overeen met die in vm?
+
+Op Centos7 en Debian8 —>
+Stel ipv4 en shit in:
+	- ip: zie vm
+	- sub: 255.255.248.0
+	- def gate: 10.129.39.254
+Stel dns is:
+	1: 10.129.28.230
+	2: 10.129.28.232
+Verander hostname via root: 
+	- hostnamectl set-hostname srv1.snoeck.ikdoeict
+Herstart service anders gaan de veranderingen niet doorgevoerd worden.
+	systemctl restart network.service
+
+OOK STATISCH INSTELLEN
+	root gebruiker!
+	centos7:
+	/etc/sysconfig/network-scripts
+		Kies de juiste device
+		via nmcli device vind je de juiste (connection: wired wss)
+		IPADDR, NETMASK, GATEWAY, DNS1, DNS2
+    nano /etc/resolv.conf zou via networkmanager automatisch gebeurd zijn
+
+	Debian8:
+		nano /etc/network/interfaces
+			auto eth0
+			iface eth0 inet static
+				address 10.129.32.231
+        		netmask 255.255.254
+        		gateway 10.129.39.254
+        		dns-nameserver 10.128.28.230
+        		dns-nameserver 10.128.28.232
+        nano /etc/resolv.conf zou via networkmanager automatisch gebeurd zijn
+
+
+Remote toegang
+______________
+Waar vind je de logfile met aanmeld pogingen via SSH?
+	- var/log/secure (enkel op centos7 blijkbaar)
+
+
+FAIL2BAN
+________
+Instaleer fail2ban op de server
+	yum install fail2ban
+	wordt geinstaleerd in /etc
+Belangrijke bestanden:
+	fail2ban.conf
+	jail.conf
+
+Standaard: Na 5 pogingen 600 seconden blokeren
+
+Hernoem jail.conf -> jail.local
+	mv jail.conf jail.local
+		Enkel requests van een ip
+			ignoreip = ip/..
+		Beperk aantal foutive aanmeldingen (3)
+			maxretry = 3
+		Enable default
+
+start / restart f2b na wijzigingen 
+
+
+SSH key-based authentication
+____________________________
+Op client:
+Genereer key
+	ssh-keygen -b 4096 -t rsa
+	[enter][enter][enter]
+	ssh-copy-id -i user@ip
+(nu werk ssh zonder paswoord. De key wort dan in home/<user>/.ssh/authorized_keys geplaatst)
+
+
+Linux Filesystem Hierarchy Standard (FHS)
+_________________________________________
+Leest da nog ne keer
+
+
+DNS (BIND)
+__________
+bind package instaleren
+	yum instal bind
+confi file
+	nano /etc/named.conf
+
+edit:
+	listen-on-port: server ip
+	allow-query     { localhost; 10.129.32.0; };
+	dnssec enable & validation no
+	forwarders	{ 10.129.28.230; 10.129.28.232; };
+Verander dns op client en server naar server
+
+test met enkele pings
+
+Maak in /var/named -> (nano) snoeck.ikdoeict
+Koppel dit bestaand aan named.conf en maak deze server master voor deze zone (snoeck.ikdoeict)
+	zone "snoeck.ikdoeict" IN {
+		type master;
+		file "snoeck.ikdoeict";
+		allow-query { ... ;};
+	}
+maak nieuwe forward zone aan in (nano) snoeck.ikdoeict -> snoeckhosting.ikdoeict
+Tip: kopiëer named.empty als een vb
+	
+$TTL 3H
+@	IN SOA  @ snoeck.ikdoeict. (
+                                  	0	; serial
+                                    1D	; refresh
+                                    1H	; retry
+                                    1W	; expire
+                                    3H) ; minimum
+        IN      NS	@
+@       IN      A       10.129.33.47
+srv1    IN      A       10.129.33.47                
+www     IN      CNAME   srv1
+
+Zorg dat de service automatisch start bij het opstarten van de server
+	systemctl enable named
+
+
+Firewall
+________
+Check of firewall actief is
+	systemctl status firewalld
+Lijst van alle zones
+	firewall-cmd --list-all-zones
+Voeg een http en dns regel permanent toe
+	firewall-cmd --zone=public --permanent --add-service=http
+	firewall-cmd --zone=public --permanent --add-service=dns  
+Herstart firewall om de regel toe te passen en named
+	systemctl restart firewalld
+	systemctl restart named
+Check of de regel weldegelijk is teogevoeg
+	firewall-cmd --zone=public --list-services
+
+
+Webserver (Apache)
+__________________
+yum install httpd
+systemctl enable httpd
+systemctl start httpd
+surf naar srv1.snoeck.ikdoeict om te te testen -> 'welkom' = oké
+
+$$$$$$$$$$$$$$$$
+$ configuratie $
+$$$$$$$$$$$$$$$$
+Verwijder standaard pagina
+	ga naar file: /etc/httpd/conf.d/welcome.conf
+Instellingen in /etc/httpd/conf/httpd.conf
+	email
+	servernaam
+	root dir stoppen van tonen: options in comment
+	Error msg
+		Options	-indexes
+		ErrorDocument 403 /error_403.html
+		--> maak deze documenten nog een en voorzie hen van een bericht!
+			--> in /var/www/html
+
+Om meerdere sites op onze server te krijgen moeten we virtualhosts aanmaken.
+	in /etc/httpd/conf.d
+		nano vhosts.conf
+			#luisteren op poort 80
+			<VirtualHost *:80>
+				# ServerAdmin: Seppe Snoeck
+				ServerAdmin seppe.snoeck@student.odisee.be
+				# DocumentRoot: waar staat de site?
+				DocumentRoot /var/www/html/vhosts/snoeck.ikdoeict
+				# ErrorDocument: Error propere weergaven
+				ErrorDocument 404 error_404.html
+				ErrorDocument 403 error_403.html 
+
+				ServerName www.snoeck.ikdoeict
+        		ServerAlias snoeck.ikdoeict	
+			</VirtualHost>
+	Maak nieuwe dir in /var/www/html
+		mkdir vhosts
+			mkdir snoeck.ikdoeict
+				Maak error pages en index.html
+
+
+****************
+* NIEUWE KLANT *
+****************
+In een notendopje
+_________________
+1. Maak een folder in /var/www/html/vhosts/<naam site>
+2. Html in deze folder plaatsen ^^
+3. vhost toevoegen (/etc/httpd/conf.d/vhosts.conf)
+4. zone toevoegen aan /etc/named.conf
+5. zonefile aanmaken /var/named/<site naam>
+	cp file file
+6. restart named en httpd
+
+
+Secure hosting
+______________
+intaleer ssl (openssl)
+	yum install mod_ssl openssl
+maak map in 
+	/etc/httpd
+		mkdir ssl
+			mkdir klant2.ikdoeict
+genereer ssl key (let op dat je in de map hierboven zit!!!!!)
+	Openssl req –x509 –nodes –days 365 –newkey rsa:4096 –keyout klant2_private.key –out klant2.ikdoeict.crt
+	vul die shit in
+
+zie --> nieuwe klant
+virtualhost
+	<VirtualHost *:443>; en/of 80(om via http en https)
+		ServerAdmin anthony.mestdach@student.ikdoeict.be
+		DocumentRoot /var/www/html/vhost/klant2.ikdoeict
+		ServerName www.klant2.ikdoeict
+		ServerAlias klant2.ikdoeict
+		ErrorLog /var/log/apache/Vklant2.log
+		SSLEngine on
+		SSLCertificateFile /etc/httpd/ssl/klant2.ikdoeict/klant2.ikdoeict.crt
+		SSLCertificateKeyFile /etc/httpd/ssl/klant2.ikdoeict/klant2_private.key
+	</VirtualHost>
+
+surf naar site via https://
+	Wil de site niet laden restart firewalld
+		nog niet??
+			firewall-cmd --zone=public --permanent --add-service=http
+			(opnieuw)
+			dan heropstarten
+Het is normaal als je een pagia krijgt dat deze site niet veilig is.
